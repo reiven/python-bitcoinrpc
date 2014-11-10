@@ -145,6 +145,7 @@ class AuthServiceProxy(object):
 
     def _batch(self, rpc_call_list):
         postdata = json.dumps(list(rpc_call_list), default=EncodeDecimal)
+        log.debug("--> " + postdata)
         self.__conn.request('POST', self.__url.path, postdata,
                             {'Host': self.__url.hostname,
                              'User-Agent': USER_AGENT,
@@ -165,7 +166,7 @@ class AuthServiceProxy(object):
             log.debug("<-%s- %s" % (response["id"],
                 json.dumps(response["result"],
                 default=EncodeDecimal))
-                )
+            )
         else:
             log.debug("<-- " + responsedata)
         return response
