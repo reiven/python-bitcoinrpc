@@ -11,11 +11,13 @@ It includes the following generic improvements:
 - sends protocol 'version', per JSON-RPC 1.1
 - sends proper, incrementing 'id'
 - uses standard Python json lib
+- can optionally log all RPC calls and results
 
 It also includes the following bitcoin-specific details:
 
 - sends Basic HTTP authentication headers
-- parses all JSON numbers that look like floats as Decimal
+- parses all JSON numbers that look like floats as Decimal,
+  and serializes Decimal values to JSON-RPC connections.
 
 Installation
 ------------
