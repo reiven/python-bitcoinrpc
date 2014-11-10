@@ -1,4 +1,3 @@
-
 """
   Copyright 2011 Jeff Garzik
 
@@ -40,6 +39,7 @@ except ImportError:
     import httplib
 import base64
 import json
+import logging
 import decimal
 try:
     import urllib.parse as urlparse
@@ -47,14 +47,16 @@ except ImportError:
     import urlparse
 
 USER_AGENT = "AuthServiceProxy/0.1"
-
 HTTP_TIMEOUT = 30
+log = logging.getLogger("BitcoinRPC")
 
 
 class JSONRPCException(Exception):
     def __init__(self, rpc_error):
-        Exception.__init__(self)
-        self.error = rpc_error
+        if type(rpc_error) is dict:
+            self.code = rpc_error.get('code')
+            rpc_error = rpc_error.get('message')
+        super(JSONRPCException, self).__init__(rpc_error)
 
 
 def EncodeDecimal(o):
@@ -62,10 +64,16 @@ def EncodeDecimal(o):
         return round(o, 8)
     raise TypeError(repr(o) + " is not JSON serializable")
 
+
 class AuthServiceProxy(object):
     __id_count = 0
 
-    def __init__(self, service_url, service_name=None, timeout=HTTP_TIMEOUT, connection=None):
+    def __init__(self,
+            service_url,
+            service_name=None,
+            timeout=HTTP_TIMEOUT,
+            connection=None
+            ):
         self.__service_url = service_url
         self.__service_name = service_name
         self.__url = urlparse.urlparse(service_url)
@@ -84,9 +92,9 @@ class AuthServiceProxy(object):
             pass
         authpair = user + b':' + passwd
         self.__auth_header = b'Basic ' + base64.b64encode(authpair)
-        
-        if connection: 
-            # Callables re-use the connection of the original proxy 
+
+        if connection:
+            # Callables re-use the connection of the original proxy
             self.__conn = connection
         elif self.__url.scheme == 'https':
             self.__conn = httplib.HTTPSConnection(self.__url.hostname, port,
@@ -102,15 +110,24 @@ class AuthServiceProxy(object):
             raise AttributeError
         if self.__service_name is not None:
             name = "%s.%s" % (self.__service_name, name)
-        return AuthServiceProxy(self.__service_url, name, connection=self.__conn)
+        return AuthServiceProxy(
+            self.__service_url,
+            name, connection=self.__conn
+            )
 
     def __call__(self, *args):
         AuthServiceProxy.__id_count += 1
+        log.debug("-%s-> %s %s" % (AuthServiceProxy.__id_count,
+                    self.__service_name,
+                    json.dumps(args, default=EncodeDecimal))
+                    )
 
         postdata = json.dumps({'version': '1.1',
-                               'method': self.__service_name,
-                               'params': args,
-                               'id': AuthServiceProxy.__id_count}, default=EncodeDecimal)
+                                   'method': self.__service_name,
+                                   'params': args,
+                                   'id': AuthServiceProxy.__id_count},
+                               default=EncodeDecimal
+                               )
         self.__conn.request('POST', self.__url.path, postdata,
                             {'Host': self.__url.hostname,
                              'User-Agent': USER_AGENT,
@@ -142,5 +159,13 @@ class AuthServiceProxy(object):
             raise JSONRPCException({
                 'code': -342, 'message': 'missing HTTP response from server'})
 
-        return json.loads(http_response.read().decode('utf8'),
-                          parse_float=decimal.Decimal)
+        responsedata = http_response.read().decode('utf8')
+        response = json.loads(responsedata, parse_float=decimal.Decimal)
+        if "error" in response and response["error"] is None:
+            log.debug("<-%s- %s" % (response["id"],
+                json.dumps(response["result"],
+                default=EncodeDecimal))
+                )
+        else:
+            log.debug("<-- " + responsedata)
+        return response
